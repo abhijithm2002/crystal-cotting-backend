@@ -23,7 +23,12 @@ app.use(
   })
 );
 
-const allowedOrigins = [process.env.WEBSITE_ORIGIN, process.env.ADMIN_ORIGIN].filter(Boolean);
+const allowedOrigins = [
+  process.env.WEBSITE_ORIGIN,
+  process.env.ADMIN_ORIGIN,
+  'https://crystal-cotting.vercel.app',
+  'https://crystal-cotting-admin.vercel.app',
+].filter(Boolean);
 
 app.use(
   cors({
