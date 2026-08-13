@@ -1,7 +1,7 @@
 const { verifyJwt } = require('../utils/tokenUtils');
 const ApiError = require('../helpers/ApiError');
 const asyncHandler = require('../helpers/asyncHandler');
-const Admin = require('../models/Admin');
+const { getAdminCredentials } = require('../utils/adminCredentials');
 
 /**
  * Requires a valid JWT, taken from the httpOnly cookie ("token") or from
@@ -26,12 +26,12 @@ const requireAuth = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, 'Invalid or expired session. Please log in again.');
   }
 
-  const admin = await Admin.findById(decoded.id);
-  if (!admin) {
-    throw new ApiError(401, 'Admin account no longer exists.');
+  const credentials = getAdminCredentials();
+  if (!credentials || decoded.email !== credentials.email) {
+    throw new ApiError(401, 'Invalid or expired session. Please log in again.');
   }
 
-  req.admin = admin;
+  req.admin = { email: credentials.email };
   next();
 });
 
