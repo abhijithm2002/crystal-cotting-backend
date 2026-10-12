@@ -1,4 +1,4 @@
-const { UPLOADS_DIR } = require('./services/imageService');
+const { UPLOADS_DIR, serveStoredFile } = require('./services/mediaStorage');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -54,7 +54,7 @@ app.use(globalLimiter);
 
 // Static file serving for uploaded media - originals at /uploads/<file>,
 // thumbnails at /uploads/thumb/<file> (thumb/ is a subfolder of uploads/).
-app.use('/uploads', express.static(UPLOADS_DIR));
+app.use('/uploads', express.static(UPLOADS_DIR), serveStoredFile);
 
 app.get('/health', (req, res) => {
   res.status(200).json({ success: true, message: 'painting-backend is running' });

@@ -18,6 +18,7 @@
  */
 
 process.env.NODE_ENV = 'test';
+process.env.MEDIA_STORAGE = 'gridfs';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'smoke-test-secret';
 process.env.JWT_EXPIRES_IN = '1h';
 process.env.ADMIN_EMAIL = 'smoke@crystalcoat.example';
@@ -182,6 +183,17 @@ async function main() {
     assert(!!(mediaDoc && mediaDoc._id), 'Upload response contains a Media doc');
     assert(!!(mediaDoc && mediaDoc.thumbnailUrl), 'Media doc has a thumbnailUrl (thumbnail was generated)');
     assert(!!(mediaDoc && mediaDoc.width && mediaDoc.height), 'Media doc has width/height metadata extracted');
+
+    for (const url of [mediaDoc.url, mediaDoc.thumbnailUrl]) {
+      const image = await fetch(`http://127.0.0.1:${process.env.PORT}${url}`);
+      assert(image.status === 200 && image.headers.get('content-type').includes('image/png'), 'Original/thumbnail URL serves an actual image');
+      assert(Buffer.from(await image.arrayBuffer()).subarray(1, 4).toString() === 'PNG', 'Image response contains PNG bytes');
+    }
+    assert(!require('fs').existsSync(require('path').join(require('../src/services/imageService').UPLOADS_DIR, mediaDoc.filename)), 'GridFS upload does not rely on local disk');
+    await mongoose.disconnect();
+    await connectDB(process.env.MONGODB_URI);
+    const afterReconnect = await fetch(`http://127.0.0.1:${process.env.PORT}${mediaDoc.url}`);
+    assert(afterReconnect.status === 200, 'Stored image remains available after database reconnect');
 
     // Reject a disguised non-image file (magic-byte sniffing)
     const fakeImage = Buffer.from('this is not really a png file, just text pretending to be one');

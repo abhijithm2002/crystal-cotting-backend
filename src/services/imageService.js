@@ -1,12 +1,10 @@
-const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const { fromBuffer } = require('file-type');
 const ApiError = require('../helpers/ApiError');
 
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads'));
-const THUMB_DIR = path.join(UPLOADS_DIR, 'thumb');
+const { UPLOADS_DIR, THUMB_DIR, storeFile, removeFile } = require('./mediaStorage');
 
 const ALLOWED_EXT_TO_MIME = {
   jpg: 'image/jpeg',
@@ -51,8 +49,6 @@ async function processAndStoreUpload(file) {
     throw new ApiError(415, `Unsupported file extension for "${file.originalname}".`);
   }
 
-  await fs.mkdir(UPLOADS_DIR, { recursive: true });
-  await fs.mkdir(THUMB_DIR, { recursive: true });
 
   if (declaredExt === 'svg') {
     if (!looksLikeSvg(file.buffer)) {
@@ -60,7 +56,7 @@ async function processAndStoreUpload(file) {
     }
 
     const filename = generateFilename('svg');
-    await fs.writeFile(path.join(UPLOADS_DIR, filename), file.buffer);
+    await storeFile(filename, file.buffer, 'image/svg+xml');
 
     return {
       filename,
@@ -86,9 +82,7 @@ async function processAndStoreUpload(file) {
 
   const realExt = sniffed.ext === 'jpeg' ? 'jpg' : sniffed.ext;
   const filename = generateFilename(realExt);
-  const outputPath = path.join(UPLOADS_DIR, filename);
   const thumbFilename = `thumb-${filename}`;
-  const thumbPath = path.join(THUMB_DIR, thumbFilename);
 
   let pipeline = sharp(file.buffer).rotate(); // auto-orient
   const metadata = await pipeline.metadata();
@@ -102,15 +96,22 @@ async function processAndStoreUpload(file) {
   }
 
   const compressedBuffer = await pipeline.toBuffer();
-  await fs.writeFile(outputPath, compressedBuffer);
 
-  await sharp(file.buffer)
+  const thumbnailBuffer = await sharp(file.buffer)
     .rotate()
     .resize({ width: THUMBNAIL_WIDTH })
     .toFormat(realExt === 'png' ? 'png' : realExt === 'webp' ? 'webp' : 'jpeg', {
       quality: JPEG_WEBP_PNG_QUALITY,
     })
-    .toFile(thumbPath);
+    .toBuffer();
+
+  await storeFile(filename, compressedBuffer, ALLOWED_EXT_TO_MIME[realExt]);
+  try {
+    await storeFile(`thumb/${thumbFilename}`, thumbnailBuffer, ALLOWED_EXT_TO_MIME[realExt]);
+  } catch (error) {
+    await removeFile(filename);
+    throw error;
+  }
 
   return {
     filename,
@@ -128,10 +129,10 @@ async function processAndStoreUpload(file) {
 async function deleteMediaFiles({ url, thumbnailUrl }) {
   const removals = [];
   if (url) {
-    removals.push(fs.rm(path.join(UPLOADS_DIR, path.basename(url)), { force: true }));
+    removals.push(removeFile(path.basename(url)));
   }
   if (thumbnailUrl) {
-    removals.push(fs.rm(path.join(THUMB_DIR, path.basename(thumbnailUrl)), { force: true }));
+    removals.push(removeFile(`thumb/${path.basename(thumbnailUrl)}`));
   }
   await Promise.all(removals);
 }
