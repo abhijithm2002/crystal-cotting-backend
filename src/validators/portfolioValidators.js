@@ -1,7 +1,7 @@
 const { body, param } = require('express-validator');
 
 const portfolioValidator = [
-  body('title').isString().trim().notEmpty().withMessage('Title is required'),
+  body('title').if((value, { req }) => req.method !== 'PUT' || value !== undefined).isString().trim().notEmpty().withMessage('Title is required'),
   body('category').optional().isString(),
   body('location').optional().isString(),
   body('completionDate').optional().isString(),

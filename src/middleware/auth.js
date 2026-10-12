@@ -1,7 +1,7 @@
 const { verifyJwt } = require('../utils/tokenUtils');
 const ApiError = require('../helpers/ApiError');
 const asyncHandler = require('../helpers/asyncHandler');
-const { getAdminCredentials } = require('../utils/adminCredentials');
+const Admin = require('../models/Admin');
 
 /**
  * Requires a valid JWT, taken from the httpOnly cookie ("token") or from
@@ -9,7 +9,8 @@ const { getAdminCredentials } = require('../utils/adminCredentials');
  * Attaches the authenticated admin to req.admin.
  */
 const requireAuth = asyncHandler(async (req, res, next) => {
-  let token = req.cookies && req.cookies.token;
+  let token = req.headers.authorization?.startsWith('Bearer ')
+    ? req.headers.authorization.slice(7) : req.cookies?.token;
 
   if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
     token = req.headers.authorization.split(' ')[1];
@@ -26,12 +27,12 @@ const requireAuth = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, 'Invalid or expired session. Please log in again.');
   }
 
-  const credentials = getAdminCredentials();
-  if (!credentials || decoded.email !== credentials.email) {
+  const admin = await Admin.findOne({ email: decoded.email });
+  if (!admin) {
     throw new ApiError(401, 'Invalid or expired session. Please log in again.');
   }
 
-  req.admin = { email: credentials.email };
+  req.admin = admin;
   next();
 });
 

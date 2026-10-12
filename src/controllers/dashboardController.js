@@ -8,23 +8,16 @@ const asyncHandler = require('../helpers/asyncHandler');
 
 // GET /api/dashboard/stats (auth)
 const getDashboardStats = asyncHandler(async (req, res) => {
-  const [totalImages, servicesCount, portfolioCount, testimonialsCount, contactMessagesCount, galleryAgg, recentLogs] =
+  const [totalImages, servicesCount, portfolioCount, testimonialsCount, contactMessagesCount, galleryCount, recentLogs] =
     await Promise.all([
       Media.countDocuments(),
       Service.countDocuments(),
       Portfolio.countDocuments(),
       Testimonial.countDocuments(),
       ContactMessage.countDocuments(),
-      // "gallery count" = total number of gallery images across all portfolio
-      // projects (distinct from portfolioCount, which is # of projects).
-      Portfolio.aggregate([
-        { $project: { imagesCount: { $size: { $ifNull: ['$images', []] } } } },
-        { $group: { _id: null, total: { $sum: '$imagesCount' } } },
-      ]),
+      Media.countDocuments({ category: 'gallery' }),
       ActivityLog.find().sort({ createdAt: -1 }).limit(10),
     ]);
-
-  const galleryCount = (galleryAgg[0] && galleryAgg[0].total) || 0;
 
   const recentUpdates = recentLogs.map((log) => ({
     collection: log.collectionName,

@@ -1,7 +1,7 @@
 const { body, param } = require('express-validator');
 
 const serviceValidator = [
-  body('title').isString().trim().notEmpty().withMessage('Title is required'),
+  body('title').if((value, { req }) => req.method !== 'PUT' || value !== undefined).isString().trim().notEmpty().withMessage('Title is required'),
   body('description').optional().isString(),
   body('image').optional().isString(),
   body('banner').optional().isString(),

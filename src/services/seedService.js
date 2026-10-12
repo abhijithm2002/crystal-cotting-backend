@@ -28,7 +28,7 @@ async function seedAdmin() {
   const admin = await Admin.findOneAndUpdate(
     { email },
     {
-      $set: {
+      $setOnInsert: {
         email,
         password: hashed,
       },
@@ -359,10 +359,13 @@ async function seedCollectionIfEmpty(Model, docs, label) {
 
 /** Seeds all singleton pages + starter content so the public site is never blank. */
 async function seedDefaultContent() {
+  const initialized = await Settings.exists({});
   await seedSingleton(Homepage, defaultHomepage);
   await seedSingleton(AboutPage, defaultAboutPage);
   await seedSingleton(ContactPage, defaultContactPage);
   await seedSingleton(Settings, defaultSettings);
+
+  if (initialized) return; // Do not resurrect content deliberately deleted by the admin.
 
   await seedCollectionIfEmpty(Service, [...defaultMainServices, ...defaultSecondaryServices], 'service');
   await seedCollectionIfEmpty(Portfolio, defaultPortfolio, 'portfolio');

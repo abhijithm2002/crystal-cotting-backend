@@ -209,6 +209,45 @@ async function main() {
     const homepageRes = await request({ method: 'GET', path: '/api/homepage' });
     assert(homepageRes.status === 200 && homepageRes.body.data && homepageRes.body.data.hero, 'GET /api/homepage returns seeded defaults');
 
+    // Verify actual admin form round-trips (GET documents include database metadata).
+    for (const [endpoint, patch, field, expected] of [
+      ['homepage', { hero: { ...homepageRes.body.data.hero, title: 'Updated from admin' } }, 'hero', 'Updated from admin'],
+      ['about', { intro: { title: 'Updated about' } }, 'intro', 'Updated about'],
+      ['contact', { phone: '+919876543210' }, 'phone', '+919876543210'],
+      ['settings', { siteName: 'Updated company' }, 'siteName', 'Updated company'],
+    ]) {
+      const before = await request({ method: 'GET', path: `/api/${endpoint}` });
+      const saved = await request({ method: 'PUT', path: `/api/${endpoint}`, token, body: { ...before.body.data, ...patch } });
+      assert(saved.status === 200, `Admin can save ${endpoint} loaded from GET`);
+      const after = await request({ method: 'GET', path: `/api/${endpoint}` });
+      const value = after.body.data[field];
+      assert((typeof value === 'object' ? value.title : value) === expected, `Public ${endpoint} reflects the saved change`);
+    }
+    const changedService = await request({ method: 'PUT', path: `/api/services/${createdServiceId}`, token, body: { isFeatured: false } });
+    assert(changedService.status === 200, 'Existing service can be edited');
+    const featured = await request({ method: 'GET', path: '/api/services?featured=true' });
+    assert(!featured.body.data.some(item => item._id === createdServiceId), 'Unfeatured service excluded from homepage query');
+
+    await request({ method: 'PUT', path: '/api/homepage', token, body: { 'hero.backgroundImage': mediaDoc.url } });
+    const inUseDelete = await request({ method: 'DELETE', path: `/api/media/${mediaDoc._id}`, token });
+    assert(inUseDelete.status === 409, 'Deleting media used on the website is rejected');
+    const replacement = buildMultipart('file', 'replacement.png', 'image/png', tinyPngBuffer());
+    const replaced = await request({ method: 'PUT', path: `/api/media/${mediaDoc._id}/replace`, token, isMultipart: true, body: replacement.body, boundary: replacement.boundary });
+    const updatedHome = await request({ method: 'GET', path: '/api/homepage' });
+    assert(replaced.status === 200 && updatedHome.body.data.hero.backgroundImage === replaced.body.data.url, 'Replacing media updates website references');
+    await request({ method: 'PUT', path: `/api/media/${mediaDoc._id}`, token, body: { category: 'gallery' } });
+    const gallery = await request({ method: 'GET', path: '/api/media/gallery' });
+    assert(gallery.status === 200 && gallery.body.data.some(item => item._id === mediaDoc._id), 'Gallery images are publicly visible');
+
+    const changedPassword = await request({ method: 'POST', path: '/api/admin/change-password', token, body: { currentPassword: process.env.ADMIN_PASSWORD, newPassword: 'ChangedPassword123!' } });
+    assert(changedPassword.status === 200, 'Admin can change password');
+    await require('../src/models/FAQ').deleteMany({});
+    await runSeeds();
+    assert(await require('../src/models/FAQ').countDocuments() === 0, 'Restart does not resurrect deleted content');
+    const oldLogin = await request({ method: 'POST', path: '/api/admin/login', body: { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD } });
+    const newLogin = await request({ method: 'POST', path: '/api/admin/login', body: { email: process.env.ADMIN_EMAIL, password: 'ChangedPassword123!' } });
+    assert(oldLogin.status === 401 && newLogin.status === 200, 'Password change survives seeding and controls login');
+
     const settingsRes = await request({ method: 'GET', path: '/api/settings' });
     assert(settingsRes.status === 200 && settingsRes.body.data && settingsRes.body.data.siteName, 'GET /api/settings returns seeded defaults');
   } finally {

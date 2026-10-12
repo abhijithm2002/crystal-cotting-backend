@@ -8,3 +8,10 @@ src/uploads/thumb/*
 *.log
 .DS_Store
 coverage/
+
+# Environment and test artifacts
+.env.*
+!.env.example
+!.env.production
+test-results/
+playwright-report/

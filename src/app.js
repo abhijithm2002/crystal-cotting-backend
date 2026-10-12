@@ -1,4 +1,4 @@
-const path = require('path');
+const { UPLOADS_DIR } = require('./services/imageService');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -28,7 +28,8 @@ const allowedOrigins = [
   process.env.ADMIN_ORIGIN,
   'https://crystal-cotting.vercel.app',
   'https://crystal-cotting-admin.vercel.app',
-].filter(Boolean);
+  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:5174'] : []),
+].filter(Boolean).flatMap(value => value.split(',')).map(value => value.trim().replace(/\/+$/, ''));
 
 app.use(
   cors({
@@ -53,13 +54,16 @@ app.use(globalLimiter);
 
 // Static file serving for uploaded media - originals at /uploads/<file>,
 // thumbnails at /uploads/thumb/<file> (thumb/ is a subfolder of uploads/).
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 app.get('/health', (req, res) => {
   res.status(200).json({ success: true, message: 'painting-backend is running' });
 });
 
-app.use('/api', routes);
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+}, routes);
 
 app.use(notFound);
 app.use(errorHandler);

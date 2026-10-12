@@ -1,6 +1,5 @@
 const bcrypt = require('bcryptjs');
 const Admin = require('../models/Admin');
-const { getAdminCredentials, credentialsMatch } = require('../utils/adminCredentials');
 const asyncHandler = require('../helpers/asyncHandler');
 const ApiError = require('../helpers/ApiError');
 const { signJwt, generateResetToken, hashToken, parseDurationToMs } = require('../utils/tokenUtils');
@@ -22,22 +21,17 @@ function cookieOptions() {
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const credentials = getAdminCredentials();
-  if (!credentials) {
-    throw new ApiError(500, 'Admin login is not configured');
-  }
-
-  if (!credentialsMatch(email, password)) {
+  const admin = await Admin.findOne({ email: email.toLowerCase().trim() }).select('+password');
+  if (!admin || !(await bcrypt.compare(password, admin.password))) {
     throw new ApiError(401, 'Invalid email or password');
   }
-
-  const token = signJwt({ email: credentials.email });
+  const token = signJwt({ email: admin.email });
 
   res.cookie('token', token, cookieOptions());
   res.status(200).json({
     success: true,
     token,
-    admin: { email: credentials.email },
+    admin: { email: admin.email },
   });
 });
 

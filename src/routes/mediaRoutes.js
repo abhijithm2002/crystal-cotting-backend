@@ -7,6 +7,7 @@ const validate = require('../middleware/validate');
 const { upload } = require('../middleware/upload');
 const { renameValidator, idParamValidator } = require('../validators/mediaValidators');
 
+router.get('/gallery', mediaController.listGallery);
 router.post('/upload', requireAuth, upload, mediaController.uploadMedia);
 router.get('/', requireAuth, mediaController.listMedia);
 router.put('/reorder', requireAuth, mediaController.reorderMedia);

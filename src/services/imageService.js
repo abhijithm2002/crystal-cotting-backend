@@ -5,7 +5,7 @@ const sharp = require('sharp');
 const { fromBuffer } = require('file-type');
 const ApiError = require('../helpers/ApiError');
 
-const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
+const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads'));
 const THUMB_DIR = path.join(UPLOADS_DIR, 'thumb');
 
 const ALLOWED_EXT_TO_MIME = {

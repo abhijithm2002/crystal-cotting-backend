@@ -3,7 +3,7 @@ const asyncHandler = require('../helpers/asyncHandler');
 const ApiError = require('../helpers/ApiError');
 const logActivity = require('../helpers/logActivity');
 const { processAndStoreUpload, deleteMediaFiles } = require('../services/imageService');
-const { findMediaUsage } = require('../services/mediaUsageService');
+const { findMediaUsage, replaceMediaReferences } = require('../services/mediaUsageService');
 
 // POST /api/media/upload (auth) - multipart `file` or `files`
 const uploadMedia = asyncHandler(async (req, res) => {
@@ -87,8 +87,8 @@ const replaceMedia = asyncHandler(async (req, res) => {
 
   const processed = await processAndStoreUpload(file);
 
-  // Remove the old physical files (new ones already stored under new names).
-  await deleteMediaFiles({ url: existing.url, thumbnailUrl: existing.thumbnailUrl });
+  const oldFiles = { url: existing.url, thumbnailUrl: existing.thumbnailUrl };
+  await replaceMediaReferences(existing.url, processed.url);
 
   existing.filename = processed.filename;
   existing.originalName = processed.originalName;
@@ -99,6 +99,7 @@ const replaceMedia = asyncHandler(async (req, res) => {
   existing.width = processed.width;
   existing.height = processed.height;
   await existing.save();
+  await deleteMediaFiles(oldFiles);
 
   await logActivity('media', 'updated', `Media "${existing.originalName}" replaced`);
 
@@ -107,9 +108,12 @@ const replaceMedia = asyncHandler(async (req, res) => {
 
 // DELETE /api/media/:id (auth)
 const deleteMedia = asyncHandler(async (req, res) => {
-  const media = await Media.findByIdAndDelete(req.params.id);
+  const media = await Media.findById(req.params.id);
   if (!media) throw new ApiError(404, 'Media not found');
 
+  const usage = await findMediaUsage(media.url);
+  if (usage.length) throw new ApiError(409, 'This image is still used on the website. Remove it from those sections before deleting it.');
+  await media.deleteOne();
   await deleteMediaFiles({ url: media.url, thumbnailUrl: media.thumbnailUrl });
   await logActivity('media', 'deleted', `Media "${media.originalName}" deleted`);
 
@@ -149,3 +153,9 @@ module.exports = {
   getMediaUsage,
   reorderMedia,
 };
+
+// Only explicitly published gallery assets are available through this public route.
+module.exports.listGallery = asyncHandler(async (req, res) => {
+  const items = await Media.find({ category: 'gallery' }).sort({ order: 1, createdAt: -1 }).select('url thumbnailUrl originalName');
+  res.json({ success: true, data: items });
+});

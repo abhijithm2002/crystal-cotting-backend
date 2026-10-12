@@ -25,7 +25,7 @@ database; its data is intentionally discarded when the process stops.
 The server listens on `PORT` (default `5000`). On first boot:
 - If the `admins` collection is empty, one admin is auto-seeded from `ADMIN_EMAIL` / `ADMIN_PASSWORD` (bcrypt hash, cost 12).
 - Every singleton page (Homepage, About, Contact, Settings) is upserted with sensible starter content if it doesn't exist yet, so the public site is never blank before the admin edits anything.
-- `Service`, `Portfolio`, `Testimonial`, and `FAQ` collections are seeded with a handful of starter documents **only if empty** (won't touch/duplicate existing data on subsequent boots).
+- `Service`, `Portfolio`, `Testimonial`, and `FAQ` collections are seeded with a handful of starter documents **only during initial site setup** (existing Settings marks initialization; deliberately emptied collections stay empty after restart).
 
 ## Scripts
 
@@ -70,7 +70,7 @@ server.js           entry point - loads env, connects DB, runs seeds, starts lis
 
 ## Auth model
 
-Single hardcoded admin, no registration. JWT is issued on login and set as an **httpOnly cookie** (`token`) AND returned in the JSON response body, so the dashboard can use either mechanism. Requests are authenticated via the cookie or an `Authorization: Bearer <token>` header (checked in that order).
+Admin accounts are seeded from environment variables and authenticated against their stored bcrypt password; no public registration. Existing passwords are preserved on restart. JWT is issued on login and set as an **httpOnly cookie** (`token`) AND returned in the JSON response body, so the dashboard can use either mechanism. Requests are authenticated via the cookie or an `Authorization: Bearer <token>` header (the explicit bearer header takes precedence).
 
 Forgot/reset password: `POST /api/admin/forgot-password` generates a random token, stores only its SHA-256 hash + a 15-minute expiry on the Admin document, and "sends" the reset link via `src/utils/mailer.js`. That mailer is built on nodemailer's JSON transport by default (no real SMTP required - the message, including the reset link, is logged to the console/log files). Drop in real SMTP credentials via `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` env vars later with zero code changes.
 
@@ -112,7 +112,7 @@ Forgot/reset password: `POST /api/admin/forgot-password` generates a random toke
 `POST /` (public lead-form submission), `GET /` (auth, `?search=&read=&page=`), `GET /export` (auth, CSV download), `PATCH /:id/read` (auth, toggles or sets `isRead`), `DELETE /:id` (auth).
 
 ### Media library (`/api/media`)
-`POST /upload` (auth, multipart `file` or `files[]`), `GET /` (auth, `?search=&category=&page=`), `PUT /:id` (auth, rename/category), `PUT /:id/replace` (auth, swap file keep same Media doc/id), `DELETE /:id` (auth, removes DB doc + files from disk), `GET /:id/usage` (auth, scans other collections for references to this URL).
+`GET /gallery` (public, gallery-category images only), `POST /upload` (auth, multipart `file` or `files[]`), `GET /` (auth, `?search=&category=&page=`), `PUT /:id` (auth, rename/category), `PUT /:id/replace` (auth, swaps file and updates all content URL references), `DELETE /:id` (auth, refuses images still referenced by content; otherwise removes DB doc + files), `GET /:id/usage` (auth, scans other collections for references to this URL).
 
 Upload pipeline: extension allowlist (`jpg,jpeg,png,webp,svg`) + **magic-byte verification via `file-type`** (never trusts client `Content-Type`), 20MB max, raster images compressed with `sharp` (~80 quality, auto-oriented) plus a 320px-wide thumbnail; SVGs are validated (must actually contain an `<svg>` root) and stored as-is (no raster processing).
 
@@ -136,3 +136,13 @@ None to the contract itself (all field names, endpoint paths, and response shape
 ## Testing note
 
 `npm run smoke-test` needs outbound internet on first run (to fetch a `mongod` binary for `mongodb-memory-server`). In network-restricted environments, use `npm run verify:offline` for a DB-independent check of the auth/token/CSV/mailer/upload logic instead.
+
+## Render and Vercel deployment
+
+Deploy the backend first, followed by the admin and public website. Both Vite projects use `VITE_API_BASE_URL=https://crystal-cotting-backend.onrender.com`. Configure the same value in Vercel when an environment override exists, then rebuild both projects.
+
+Set `NODE_ENV=production`, `WEBSITE_ORIGIN=https://crystal-cotting.vercel.app`, and `ADMIN_ORIGIN=https://crystal-cotting-admin.vercel.app` on Render. Preserve your existing `MONGODB_URI` and `JWT_SECRET`. `ADMIN_EMAIL`/`ADMIN_PASSWORD` initialize a new account; password changes thereafter live in MongoDB. Use the existing explicit `npm run reset-admin` command only when intentionally resetting the account.
+
+Uploaded files must live on durable storage. Mount a Render persistent disk at `/var/data` and set `UPLOADS_DIR=/var/data/uploads`; copy existing uploads (including `thumb`) into that directory before switching. The setting alone does not provision storage. Files already lost from ephemeral storage must be restored or uploaded again. Render free services cannot attach persistent disks; those deployments need a paid disk-capable instance or an external object-storage integration.
+
+References: https://render.com/docs/disks and https://render.com/docs/free

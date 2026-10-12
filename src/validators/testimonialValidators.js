@@ -1,7 +1,7 @@
 const { body, param } = require('express-validator');
 
 const testimonialValidator = [
-  body('name').isString().trim().notEmpty().withMessage('Name is required'),
+  body('name').if((value, { req }) => req.method !== 'PUT' || value !== undefined).isString().trim().notEmpty().withMessage('Name is required'),
   body('location').optional().isString(),
   body('image').optional().isString(),
   body('initials').optional().isString(),

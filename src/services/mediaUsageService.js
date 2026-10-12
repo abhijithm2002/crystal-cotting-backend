@@ -106,4 +106,16 @@ async function findMediaUsage(url) {
   return usages;
 }
 
-module.exports = { findMediaUsage };
+async function replaceMediaReferences(oldUrl, newUrl) {
+  const models = { homepage: Homepage, about_page: AboutPage, services: Service, portfolio: Portfolio, testimonials: Testimonial, contact_page: ContactPage, settings: Settings };
+  const usages = await findMediaUsage(oldUrl);
+  for (const usage of usages) {
+    const field = usage.field.replace(/\[(\d+)\]/g, '.$1');
+    if (field === 'images' || field === 'gallery') {
+      await models[usage.collection].updateOne({ _id: usage.docId }, { $set: { [`${field}.$[image]`]: newUrl } }, { arrayFilters: [{ image: oldUrl }] });
+    } else {
+      await models[usage.collection].updateOne({ _id: usage.docId, [field]: oldUrl }, { $set: { [field]: newUrl } });
+    }
+  }
+}
+module.exports = { findMediaUsage, replaceMediaReferences };
